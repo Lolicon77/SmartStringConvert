@@ -1,0 +1,112 @@
+关于GetComponent方法的一些测试：
+	GetComponentInParent 和 GetComponentInChildren可以找到多层父子关系的脚本， 但是会遵从就近原则；
+	上述两方法可以找到gameObject本身挂载的脚本；
+	找本身上挂载的脚本，GetComponent时间大概为GetComponentInParent 和 GetComponentInChildren的3/5，大约是100000次15ms（AMD 860k,下同）;
+	go上挂了多个脚本，GetComponent效率未明显降低，但如果未找到脚本，所花费时间增加约；
+	GetComponentInParent 和 GetComponentInChildren 找父子级别上挂载的脚本，花费时间约为找本体上挂脚本的30倍，找祖父孙子级别的约60倍，慎用；
+
+
+遮挡剔除：
+	http://gad.qq.com/college/articledetail/5828
+
+Unity实现Component属性“复制粘贴”功能：
+	http://gad.qq.com/college/articledetail/6021
+
+Unity物体在相机可视范围中：
+	一 使用MonoBehaviour 的两个方法
+		void OnBecameVisible()
+		void OnBecameInvisible()
+		一个是在物体上的Render在任意一个相机上被渲染时调用，一个是Render在所有相机上都不可见的时候被调用，这里的相机也包括编辑器上的相机（编辑器的可是区域）。
+
+	二 使用renderer.isVisible 判断
+		经测试应该实现方法同上，需要事先把物体的所有Renderer做缓存。
+
+	* UGUI中CanvasRenderer不是Renderer的子类。
+
+
+Unity3D - 动作动画忽略timeScale
+
+	下面分别是Animation、Animator和粒子特效的ignoreTimeScale方法。
+	Animation
+		Time.realtimeSinceStartup记录是不受timeScale影响的真实时间，利用它来在每一帧采样播放Animation。代码片段如下：
+		AnimationState animState = animation[clipName]; // 当前动画状态
+		curTime = Time.realtimeSinceStartup; // 当前真实时间
+		deltaTime = curTime - lastFrameTime; // 此帧与上一帧的时间间隔
+		lastFrameTime = curTime; // 记录此帧时间，下一帧用
+		progressTime += deltaTime; // 动画已播放时间
+		animState.normalizedTime = progressTime / currState.length; // 动画规范化时间[0-1]
+		animation.Sample(); // 在当前状态对动画进行采样，当你想显式设置动画状态并且对它取样的时候使用
+
+	Animator
+		Animator _animator = ...;
+		public void Update() {
+		    _animator.updateMode = AnimatorUpdateMode.UnscaledTime; // 指定该Animator更新模式为不受scale影响
+		}
+
+	粒子特效
+		ParticleEmitter
+			ParticleEmitter _emitter = ...;
+			public void Update() {
+			    _emitter.Simulate(Time.unscaledDeltaTime);
+			}
+		ParticleSystem
+			ParticleSystem _particleSystem = ...;
+			public void Update() {
+			    _particleSystem.Simulate(Time.unscaledDeltaTime, true, false);
+			}
+
+碰撞：
+	碰撞器和触发器相碰，一方以上有刚体组件，两方下的OnTriggerEnter全部会被回调，OnCollisionEnter全部不会回调；
+	父物体有刚体组件，子物体的OnCollisionEnter不会被回调，OnTriggerEnter会被回调；
+	collider.attachedRigidbody 可以获取到关联刚体组件，如果没有则返回Null；
+	满足碰撞条件，非刚体组件的go下也会回调OnTriggerEnter和OnCollisionEnter回调函数；
+	trigger可以与trigger发生碰撞；
+	如果有刚体组件，其下所有碰撞体都可以触发有刚体的父物体的OnTriggerEnter回调函数，否则只能触发带有collider的子物体的回调；
+
+Animator:
+	Animator.GetCurrentAnimatorStateInfo(int layerIndex) 获取当前animator Layer；
+	AnimatorStateInfo.IsName(string name) 判断当前状态是否为name，name格式为 层.状态 （例如 Base Layer.Attack）；
+	AnimatorStateInfo.length 可以获取当前状态中动画的播放时间；
+	处于某一State下播放同一State的动画不会重置；
+
+[OnOpenAssetAttribute(int i)]
+static bool XXX(int instanceID, int line){}
+	Asset文件夹下的资源被双击时执行；
+	i为执行次序，越小越优先，默认无参时优先级高于2，低于1；
+	函数返回true时将不会执行下一优先级标注该特性的函数（同样不会被系统默认的程序打开该资源）；
+	EditorUtility.InstanceIDToObject(instanceID)可获得该资源引用，AssetDatabase.GetAssetPath(obj)函数传入资源引用获取资源路径；
+
+
+性能优化（GAD）:
+	http://gad.qq.com/zt/unity
+
+
+Shader:
+	cg语言中 两个向量相乘为每一位上的数字对应相乘（ORZ）
+
+gameObject.SetActive(bool ):
+	测试条件同上，大概10w次5ms
+
+各类Find：
+	GameObject.FindObjectOfType<Mono>、GameObject.FindObjectOfType(typeof(Mono))、GameObject.Find("name")、GameObject.FindGameObjectWithTag("name")、GameObject.FindWithTag("name")均无法查找场景类未激活物体和其下挂载脚本，子物体的话父级未激活也无法查找；
+	Object.FindObjectsOfType、Transform.Find、Transform.Find可以查找到未激活物体下的脚本和未激活子物体；查找子物体时父子物体active状态均不影响
+	Inactive物体可以使用GetComponent获取组件，但不能通过GetComponentInChildren获取子物体上组件，若子物体状态为Inactive也无法通过GetComponentInChildren获取；
+	transform的childCount会记录未激活子物体的数量，遍历transform可以获取未激活子物体；
+	Resources.FindObjectsOfTypeAll<GameObject>()可以获取场景内所有物体，包括hideFlags为HideInHierarchy的物体；
+
+IEnumerator Start：
+	IEnumerator Start()方法 第一次yield return前会在Update前执行，之后同协程，会在Update后执行
+
+ExecuteInEditMode:
+	非运行状态下，只有Unity界面发生变化时，会执行下面的Update和LateUpdate函数，OnGUI函数也会执行，而且更加频繁；
+
+OnDrawGizmos：
+	这是一个神奇的回调函数
+
+activeSelf:自身激活状态		activeInHirerachy：父级中有一个未激活就是false
+
+射线：
+    射线的消耗和距离无关 和是否碰撞到物体有关
+    检测特定层级的碰撞体 期间穿过的其他碰撞体个数越多 性能消耗越大
+    带hit信息大约增加1/5左右的消耗
+    layermask检测 每检测一次 多一份消耗
